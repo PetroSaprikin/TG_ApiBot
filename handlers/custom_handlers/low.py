@@ -2,7 +2,7 @@ from telebot.types import Message
 import requests
 
 from states.low_prices_states import LowPricesState
-from site_api.core import headers, querystring, querystring1, url, url1
+from site_api.core import url1, url2, headers1, headers2, payload, querystring
 from config_data.config import DEFAULT_COMMANDS
 from loader import bot
 
@@ -28,10 +28,10 @@ def city(message: Message) -> None:
             data['city'] = message.text
         bot.set_state(message.from_user.id, LowPricesState.checkin_date, message.chat.id)
         bot.send_message(message.chat.id, "Введите дату заселения (в формате гггг-мм-дд)")
-        querystring1["query"] = message.text
-        querystring["sort_order"] = "PRICE_LOW_TO_HIGH"
-        response = requests.get(url1, headers=headers, params=querystring1)
-        querystring["region_id"] = response.json()["data"][0]["gaiaId"]
+        querystring["q"] = message.text
+        response = requests.get(url2, headers=headers2, params=querystring)
+        r_id = response.json()["sr"][0]["gaiaId"]
+        payload["destination"]["regionId"] = r_id
     else:
         bot.send_message(message.from_user.id, "Попробуйте еще раз")
 
@@ -45,7 +45,9 @@ def checkin_date(message: Message):
                 data["checkin_date"] = message.text
             bot.set_state(message.from_user.id, LowPricesState.checkout_date, message.chat.id)
             bot.send_message(message.chat.id, "Введите дату выселения (в формате гггг-мм-дд)")
-            querystring["checkin_date"] = message.text
+            payload["checkInDate"]["day"] = int(check[2])
+            payload["checkInDate"]["month"] = int(check[1])
+            payload["checkInDate"]["year"] = int(check[0])
     else:
         bot.send_message(message.chat.id, "Введите дату заселения еще раз (в формате гггг-мм-дд)")
 
@@ -59,7 +61,9 @@ def checkout_date(message: Message):
                 data["checkout_date"] = message.text
             bot.set_state(message.from_user.id, LowPricesState.results_amount, message.chat.id)
             bot.send_message(message.chat.id, "Теперь введите искомое кол-во результатов от 1 до 10ти")
-            querystring["checkout_date"] = message.text
+            payload["checkOutDate"]["day"] = int(check[2])
+            payload["checkOutDate"]["month"] = int(check[1])
+            payload["checkOutDate"]["year"] = int(check[0])
     else:
         bot.send_message(message.chat.id, "Введите дату выселения еще раз (в формате гггг-мм-дд)")
 
@@ -74,17 +78,19 @@ def results(message: Message):
                 f"Дата выселения: {data['checkout_date']}"
             )
         bot.send_message(message.chat.id, msg)
-        response = requests.get(url, headers=headers, params=querystring)
+        response = requests.post(url1, json=payload, headers=headers1)
         if 0 < int(message.text) <= 10:
             for _ in range(int(message.text)):
                 try:
                     result = response.json()
-                    hotel = result["properties"][_]["name"]
-                    price = result["properties"][_]["mapMarker"]["label"]
-                    location = result["properties"][_]["neighborhood"]["name"]
+                    hotel = result["data"]["propertySearch"]["properties"][_]['name']
+                    price = result["data"]["propertySearch"]["properties"][_]['mapMarker']['label']
+                    h_id = result["data"]["propertySearch"]["properties"][_]['id']
                     bot.send_message(message.chat.id, f"Название отеля: {hotel}\n"
-                                                      f"Цена номера: {price}\n"
-                                                      f"Находится в: {location}")
+                                                      f"Средняя цена: {price}\n"
+                                                      f"Ссылка на отель: "
+                                                      f"https://www.hotels.com/h{h_id}.Hotel-Information",
+                                     disable_web_page_preview=True)
                     bot.set_state(message.chat.id, LowPricesState.end, message.chat.id)
                 except:
                     bot.send_message(message.chat.id, f"Выведено {_} результатов")
@@ -93,7 +99,12 @@ def results(message: Message):
             bot.send_message(message.chat.id, "Вывожу 10 результатов")
             for _ in range(10):
                 try:
-                    bot.send_message(message.chat.id, response.json()["properties"][_]["name"])
+                    result = response.json()["data"]["propertySearch"]["properties"][_]
+                    bot.send_message(message.chat.id, f"Название отеля: {result['name']}\n"
+                                                      f"Средняя цена: {result['mapMarker']['label']}\n"
+                                                      f"Ссылка на отель: "
+                                                      f"https://www.hotels.com/h{result['id']}.Hotel-Information",
+                                     disable_web_page_preview=True)
                     bot.set_state(message.chat.id, LowPricesState.end, message.chat.id)
                 except:
                     bot.send_message(message.chat.id, f"Выведено {_} результатов")
