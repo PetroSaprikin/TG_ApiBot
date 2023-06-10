@@ -1,9 +1,12 @@
 from telebot.types import Message
 import requests
+from telegram_bot_calendar import DetailedTelegramCalendar, LSTEP
 
+from keyboards.reply.next import next_button
 from states.low_prices_states import LowPricesState
-from site_api.core import url1, url2, headers1, headers2, payload, querystring
-from config_data.config import DEFAULT_COMMANDS
+from config_data.config import headers1, headers2
+from site_api.core import url1, url2, payload, querystring
+from config_data.config import DEFAULT_COMMANDS, times_check
 from loader import bot
 
 
@@ -26,58 +29,57 @@ def city(message: Message) -> None:
     if message.text.isalpha():
         with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
             data['city'] = message.text
-        bot.set_state(message.from_user.id, LowPricesState.checkin_date, message.chat.id)
-        bot.send_message(message.chat.id, "Введите дату заселения (в формате гггг-мм-дд)")
+        bot.set_state(message.from_user.id, LowPricesState.checkout_date, message.chat.id)
         querystring["q"] = message.text
         response = requests.get(url2, headers=headers2, params=querystring)
         r_id = response.json()["sr"][0]["gaiaId"]
         payload["destination"]["regionId"] = r_id
+        bot.send_message(message.from_user.id, "Введите дату заселения")
+        calendar, step = DetailedTelegramCalendar().build()
+        bot.send_message(message.chat.id,
+                         f"Select {LSTEP[step]}",
+                         reply_markup=calendar)
     else:
         bot.send_message(message.from_user.id, "Попробуйте еще раз")
 
 
-@bot.message_handler(state=LowPricesState.checkin_date)
-def checkin_date(message: Message):
-    check = message.text.split("-")
-    if len(check) == 3 and len(check[0]) == 4 and len(check[1]) == 2 and len(check[2]) == 2:
-        if 1 < int(check[1]) < 12 and 1 <= int(check[2]) <= 31:
-            with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
-                data["checkin_date"] = message.text
-            bot.set_state(message.from_user.id, LowPricesState.checkout_date, message.chat.id)
-            bot.send_message(message.chat.id, "Введите дату выселения (в формате гггг-мм-дд)")
-            payload["checkInDate"]["day"] = int(check[2])
-            payload["checkInDate"]["month"] = int(check[1])
-            payload["checkInDate"]["year"] = int(check[0])
-    else:
-        bot.send_message(message.chat.id, "Введите дату заселения еще раз (в формате гггг-мм-дд)")
+@bot.callback_query_handler(func=DetailedTelegramCalendar.func())
+def cal(c):
+    result, key, step = DetailedTelegramCalendar().process(c.data)
+    if not result and key:
+        bot.edit_message_text(f"Select {LSTEP[step]}",
+                              c.message.chat.id,
+                              c.message.message_id,
+                              reply_markup=key)
+    elif result:
+        times_check["day"] = int(result.strftime("%d"))
+        times_check["month"] = int(result.strftime("%m"))
+        times_check["year"] = int(result.strftime("%Y"))
+        bot.edit_message_text(f"Выбранная дата: {result}",
+                              c.message.chat.id,
+                              c.message.message_id,
+                              reply_markup=key)
 
 
 @bot.message_handler(state=LowPricesState.checkout_date)
 def checkout_date(message: Message):
-    check = message.text.split("-")
-    if len(check) == 3 and len(check[0]) == 4 and len(check[1]) == 2 and len(check[2]) == 2:
-        if 1 < int(check[1]) < 12 and 1 <= int(check[2]) <= 31:
-            with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
-                data["checkout_date"] = message.text
-            bot.set_state(message.from_user.id, LowPricesState.results_amount, message.chat.id)
-            bot.send_message(message.chat.id, "Теперь введите искомое кол-во результатов от 1 до 10ти")
-            payload["checkOutDate"]["day"] = int(check[2])
-            payload["checkOutDate"]["month"] = int(check[1])
-            payload["checkOutDate"]["year"] = int(check[0])
-    else:
-        bot.send_message(message.chat.id, "Введите дату выселения еще раз (в формате гггг-мм-дд)")
+    payload["checkInDate"]["day"] = times_check["day"]
+    payload["checkInDate"]["month"] = times_check["month"]
+    payload["checkInDate"]["year"] = times_check["year"]
+    bot.set_state(message.from_user.id, LowPricesState.results_amount, message.chat.id)
+    bot.send_message(message.from_user.id, "Введите дату выселения")
+    calendar, step = DetailedTelegramCalendar().build()
+    bot.send_message(message.chat.id,
+                     f"Select {LSTEP[step]}",
+                     reply_markup=calendar)
 
 
 @bot.message_handler(state=LowPricesState.results_amount)
 def results(message: Message):
+    payload["checkOutDate"]["day"] = times_check["day"]
+    payload["checkOutDate"]["month"] = times_check["month"]
+    payload["checkOutDate"]["year"] = times_check["year"]
     if message.text.isdigit():
-        with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
-            msg = (
-                f"Город: {data['city']}\n"
-                f"Дата заселения: {data['checkin_date']}\n"
-                f"Дата выселения: {data['checkout_date']}"
-            )
-        bot.send_message(message.chat.id, msg)
         response = requests.post(url1, json=payload, headers=headers1)
         if 0 < int(message.text) <= 10:
             for _ in range(int(message.text)):
