@@ -133,6 +133,7 @@ def show_info(call):
                                                    f'Примерная цена за период проживания:'
                                                    f' ${hotel_info["total_price"]}\n'
                                                    f'Рейтинг отеля: {hotel_info["rating"]}\n'
-                                                   f'Ссылка на отель: {hotel_info["linc"]}',
+                                                   f'Ссылка на отель: {hotel_info["linc"]}\n',
                              disable_web_page_preview=True)
+            bot.send_message(call.message.chat.id, f'{hotel_info['image']}')
     bot.set_state(call.message.chat.id, None)

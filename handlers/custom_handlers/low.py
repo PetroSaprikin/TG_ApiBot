@@ -135,4 +135,5 @@ def show_info(call):
                                                    f'Рейтинг отеля: {hotel_info["rating"]}\n'
                                                    f'Ссылка на отель: {hotel_info["linc"]}',
                              disable_web_page_preview=True)
+            bot.send_message(call.message.chat.id, f'{hotel_info['image']}')
     bot.set_state(call.message.chat.id, None)
