@@ -85,7 +85,8 @@ def request_hotels(user_id, chat_id, sort_order="PRICE_LOW_TO_HIGH", is_reverse=
                 }
             ],
             "resultsStartingIndex": 0,
-            "resultsSize": hotels_data['hotels_count'],
+            "resultsSize": 200 if hotels_data['criteria'] == "По дистанции до центра города"
+            or hotels_data['criteria'] == "По диапазону цены" else hotels_data['hotels_count'],
             "sort": sort_order,
             "filters": {"price": {
                 "max": hotels_data['price_max'] if 'price_max' in hotels_data.keys() else None,
