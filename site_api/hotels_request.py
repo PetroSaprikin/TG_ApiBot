@@ -5,21 +5,21 @@ import json
 from loader import bot
 
 
-def request_to_api(method: str, url: str, headers: dict, params: dict = None, json: json = None) -> json:
+def request_to_api(method: str, url: str, headers: dict, params: dict = None, jsn: json = None) -> json:
     """
     Функция делает запрос
     :param method: метод запроса
     :param url: ссылка для запроса
     :param headers: апи-ключ и апи-хост
     :param params: параметры для апи
-    :param json: джейсон
+    :param jsn: джейсон
     :return response: возвращает ответ с сайта
     """
     try:
         if params:
             response = requests.request(method=method, url=url, params=params, headers=headers, timeout=10)
         else:
-            response = requests.request(method=method, url=url, json=json, headers=headers, timeout=10)
+            response = requests.request(method=method, url=url, json=jsn, headers=headers, timeout=10)
         if response.status_code == requests.codes.ok:
             return response
     except (ConnectionError, ConnectionResetError, ConnectionAbortedError, ConnectionRefusedError):
@@ -101,7 +101,7 @@ def request_hotels(user_id, chat_id, sort_order="PRICE_LOW_TO_HIGH", is_reverse=
         }
         data = dict()
         try:
-            response = json.loads(request_to_api("POST", url, json=payload, headers=headers).text)
+            response = json.loads(request_to_api("POST", url, jsn=payload, headers=headers).text)
             if "errors" in response.keys():
                 raise ValueError
             result = response["data"]["propertySearch"]["properties"]
@@ -115,7 +115,7 @@ def request_hotels(user_id, chat_id, sort_order="PRICE_LOW_TO_HIGH", is_reverse=
 
                 data[name] = {
                     'hotel_id': hotel['id'],
-                    'distance': int(hotel['destinationInfo']['distanceFromDestination']['value']),
+                    'distance': int(hotel['destinationInfo']['distanceFromDestination']['value']) * 1609.34,
                     'total_days': total_days,
                     'price': price,
                     'total_price': total_price,

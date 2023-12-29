@@ -124,7 +124,6 @@ def find_all_deals(call):
     show_info(call)
 
 
-@bot.callback_query_handler(func=None, state=HighPriceState.info)
 def show_info(call):
     with bot.retrieve_data(call.message.chat.id, call.message.chat.id) as hotels_data:
         bot.send_message(call.message.chat.id, "Отлично, вот список отелей по возрастанию цены!")
@@ -135,5 +134,5 @@ def show_info(call):
                                                    f'Рейтинг отеля: {hotel_info["rating"]}\n'
                                                    f'Ссылка на отель: {hotel_info["linc"]}\n',
                              disable_web_page_preview=True)
-            bot.send_message(call.message.chat.id, f'{hotel_info['image']}')
+            bot.send_message(call.message.chat.id, f"{hotel_info['image']}")
     bot.set_state(call.message.chat.id, None)

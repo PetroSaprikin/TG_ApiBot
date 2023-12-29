@@ -10,8 +10,6 @@ from states.custom_state import CustomPriceState
 from keyboards.inline.cities_list import cities_keyboard
 from loader import bot, calendar, calendar_1_callback
 from keyboards.inline.calendar import create_calendar
-from keyboards.reply.custom_buttons import custom_buttons
-from keyboards.reply.pricing import pricing
 
 
 @bot.message_handler(state="*", commands=['cancel'])
@@ -22,49 +20,11 @@ def any_state(message: types.Message):
     bot.reply_to(message, "\n".join(text))
 
 
-@bot.message_handler(commands=['custom'])
-def take_criteria(message: types.Message):
-    bot.set_state(message.from_user.id, CustomPriceState.criteria, message.chat.id)
-    bot.send_message(message.from_user.id, "Выберите по каким критериям будет выполнятся поиск отелей!",
-                     reply_markup=custom_buttons())
-
-
-@bot.message_handler(state=CustomPriceState.criteria)
+@bot.message_handler(commands=["custom"])
 def take_city(message: types.Message):
-    with bot.retrieve_data(message.from_user.id, message.chat.id) as hotels_data:
-        hotels_data["criteria"] = message.text
-        if hotels_data["criteria"] == "По диапазону цены":
-            bot.set_state(message.from_user.id, CustomPriceState.pricing, message.chat.id)
-            bot.send_message(message.from_user.id, "Введите нужный диапазон цены", reply_markup=pricing())
-        else:
-            bot.set_state(message.from_user.id, CustomPriceState.city, message.chat.id)
-            bot.send_message(message.from_user.id, "Прошу, введите в каком городе будет производится поиск.")
-
-
-@bot.message_handler(state=CustomPriceState.pricing)
-def pricing_func(message: types.Message):
-    with bot.retrieve_data(message.from_user.id, message.chat.id) as hotels_data:
-        if message.text == "До 10ти долларов за ночь":
-            hotels_data['price_max'] = 10
-            hotels_data['price_min'] = 0
-            bot.set_state(message.from_user.id, CustomPriceState.city, message.chat.id)
-            bot.send_message(message.from_user.id, "Прошу, введите в каком городе будет производится поиск.")
-        elif message.text == "От 10ти до 20":
-            hotels_data['price_max'] = 20
-            hotels_data['price_min'] = 10
-            bot.set_state(message.from_user.id, CustomPriceState.city, message.chat.id)
-            bot.send_message(message.from_user.id, "Прошу, введите в каком городе будет производится поиск.")
-        elif message.text == "От 20ти до 30":
-            hotels_data['price_max'] = 30
-            hotels_data['price_min'] = 20
-            bot.set_state(message.from_user.id, CustomPriceState.city, message.chat.id)
-            bot.send_message(message.from_user.id, "Прошу, введите в каком городе будет производится поиск.")
-        elif message.text == "От 30ти и выше":
-            hotels_data['price_min'] = 30
-            bot.set_state(message.from_user.id, CustomPriceState.city, message.chat.id)
-            bot.send_message(message.from_user.id, "Прошу, введите в каком городе будет производится поиск.")
-        else:
-            bot.send_message(message.from_user.id, "Введите нужный диапазон цены")
+    bot.set_state(message.from_user.id, CustomPriceState.city, message.chat.id)
+    bot.send_message(message.from_user.id, "Вы решили в ручную задать диапазон цены и дистанцию до центра города.\n"
+                                           "Прошу, введите в каком городе будет производится поиск.")
 
 
 @bot.message_handler(state=CustomPriceState.city)
@@ -141,9 +101,8 @@ def callback_inline(call: CallbackQuery):
                 end_date = datetime.date(my_date.year, my_date.month, my_date.day)
                 hotels_data['check_out'] = end_date
                 hotels_data['total_days'] = end_date - hotels_data['check_in']
-                bot.send_message(call.message.chat.id, 'Хорошо, сколько отелей выводить? Выбери одну кнопку',
-                                 reply_markup=get_count_hotel())
-                bot.set_state(call.message.chat.id, CustomPriceState.count_hotel)
+                bot.send_message(call.message.chat.id, 'Хорошо, теперь введите нижний порог цены за ночь в долларах.')
+                bot.set_state(call.message.chat.id, CustomPriceState.price_min)
             else:
                 bot.send_message(call.message.chat.id, 'Ты выезжаешь из отеля раньше, чем приезжаешь туда!')
                 create_calendar(call.message, hotels_data['check_in'])
@@ -153,28 +112,65 @@ def callback_inline(call: CallbackQuery):
         create_calendar(call.message)
 
 
+@bot.message_handler(state=CustomPriceState.price_min)
+def min_price(message):
+    if message.text.isdigit():
+        with bot.retrieve_data(message.from_user.id, message.chat.id) as hotels_data:
+            hotels_data["price_min"] = int(message.text)
+            bot.set_state(message.from_user.id, CustomPriceState.price_max, message.chat.id)
+            bot.send_message(message.from_user.id, "Отлично, а теперь введи максимальную цену.")
+    else:
+        bot.send_message(message.from_user.id, "Цена должна быть целым числом!")
+
+
+@bot.message_handler(state=CustomPriceState.price_max)
+def max_price(message):
+    if message.text.isdigit():
+        with bot.retrieve_data(message.from_user.id, message.chat.id) as hotels_data:
+            if hotels_data["price_min"] >= int(message.text):
+                bot.send_message(message.from_user.id, "Максимальная цена должна быть больше минимальной!")
+            else:
+                hotels_data["price_max"] = int(message.text)
+                bot.send_message(message.from_user.id,
+                                 "А теперь введите максимально допустимую дистанцию от центра города. (в метрах)")
+                bot.set_state(message.from_user.id, CustomPriceState.distance, message.chat.id)
+    else:
+        bot.send_message(message.from_user.id, "Цена должна быть целым числом!")
+
+
+@bot.message_handler(state=CustomPriceState.distance)
+def set_distance(message):
+    if message.text.isdigit():
+        with bot.retrieve_data(message.from_user.id, message.chat.id) as hotels_data:
+            hotels_data["user_distance"] = int(message.text)
+            bot.set_state(message.from_user.id, CustomPriceState.count_hotel, message.chat.id)
+            bot.send_message(message.from_user.id, "Отлично, сколько результатов вывести?",
+                             reply_markup=get_count_hotel())
+    else:
+        bot.send_message(message.from_user.id, "Дистанция должна быть целым числом в метрах!")
+
+
 @bot.callback_query_handler(func=None, state=CustomPriceState.count_hotel)
 def find_all_deals(call):
     with bot.retrieve_data(call.message.chat.id, call.message.chat.id) as hotels_data:
         hotels_data["hotels_count"] = int(call.data)
-    data = request_hotels(call.message.chat.id, call.message.chat.id, is_reverse=True)
+    data = request_hotels(call.message.chat.id, call.message.chat.id, is_reverse=False)
     with bot.retrieve_data(call.message.chat.id, call.message.chat.id) as hotels_data:
         hotels_data["data_to_show"] = data
     bot.set_state(call.message.chat.id, CustomPriceState.info)
     show_info(call)
 
 
-@bot.callback_query_handler(func=None, state=CustomPriceState.info)
 def show_info(call):
     with bot.retrieve_data(call.message.chat.id, call.message.chat.id) as hotels_data:
         bot.send_message(call.message.chat.id, "Отлично, вот список отелей по возрастанию цены!")
         for hotel, hotel_info in hotels_data["data_to_show"].items():
-            bot.send_message(call.message.chat.id, f'Название отеля: {hotel}\n'
-                                                   f'Примерная цена за период проживания:'
-                                                   f' ${hotel_info["total_price"]}\n'
-                                                   f'Рейтинг отеля: {hotel_info["rating"]}\n'
-                                                   f'Ссылка на отель: {hotel_info["linc"]}\n',
-                             disable_web_page_preview=True)
-            bot.send_message(call.message.chat.id, f'{hotel_info['image']}')
+            if hotels_data["user_distance"] > hotel_info["distance"]:
+                bot.send_message(call.message.chat.id, f'Название отеля: {hotel}\n'
+                                                       f'Примерная цена за период проживания:'
+                                                       f' ${hotel_info["total_price"]}\n'
+                                                       f'Рейтинг отеля: {hotel_info["rating"]}\n'
+                                                       f'Расстояние до отеля: {hotel_info["distance"]}м\n'
+                                                       f'Ссылка на отель: {hotel_info["linc"]}',
+                                 disable_web_page_preview=True)
     bot.set_state(call.message.chat.id, None)
-
